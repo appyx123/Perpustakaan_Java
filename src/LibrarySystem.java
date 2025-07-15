@@ -1,10 +1,7 @@
-import java.util.ArrayList;
-import java.util.InputMismatchException;
+import java.sql.*;
 import java.util.Scanner;
 
 public class LibrarySystem {
-    private ArrayList<Book> books = new ArrayList<>();
-    private ArrayList<Member> members = new ArrayList<>();
     private Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
@@ -19,8 +16,7 @@ public class LibrarySystem {
         while (running) {
             showMenu();
             try {
-                int choice = scanner.nextInt();
-                scanner.nextLine();
+                int choice = Integer.parseInt(scanner.nextLine());
 
                 switch (choice) {
                     case 1 -> addBook();
@@ -28,22 +24,18 @@ public class LibrarySystem {
                     case 3 -> returnBook();
                     case 4 -> displayAllBooks();
                     case 5 -> {
-                        System.out.println("Keluar dari sistem. Terima kasih!");
+                        System.out.println("Keluar dari sistem. Semua data akan dihapus...");
+                        resetDatabase();
                         running = false;
                     }
                     default -> System.out.println("Pilihan tidak valid!");
                 }
-            } catch (InputMismatchException e) {
-                System.out.println("Masukkan angka saja!");
-                scanner.nextLine();
-            }
-
-            if (running) {
-                System.out.println("\nTekan Enter untuk lanjut...");
-                scanner.nextLine();
+            } catch (NumberFormatException e) {
+                System.out.println("Masukkan angka yang valid!");
             }
         }
     }
+
 
     private void showMenu() {
         System.out.println("\n=== PERPUSTAKAAN DIGITAL ===");
@@ -60,21 +52,19 @@ public class LibrarySystem {
             System.out.print("ID Buku: ");
             String id = scanner.nextLine().trim();
             if (id.isEmpty()) throw new IllegalArgumentException("ID tidak boleh kosong!");
+
             if (findBookById(id) != null) throw new IllegalArgumentException("ID sudah ada!");
 
             System.out.print("Judul: ");
             String title = scanner.nextLine().trim();
-            if (title.isEmpty()) throw new IllegalArgumentException("Judul tidak boleh kosong!");
-
             System.out.print("Author: ");
             String author = scanner.nextLine().trim();
-            if (author.isEmpty()) throw new IllegalArgumentException("Author tidak boleh kosong!");
-
             System.out.print("ISBN (10 digit): ");
             String isbn = scanner.nextLine().trim();
-            if (!Book.validateIsbn(isbn)) throw new IllegalArgumentException("ISBN harus 10 digit angka!");
+            if (!Book.validateIsbn(isbn)) throw new IllegalArgumentException("ISBN tidak valid!");
 
-            books.add(new Book(id, title, author, isbn));
+            Book book = new Book(id, title, author, isbn);
+            book.saveToDB();
             System.out.println("Buku berhasil ditambahkan!");
         } catch (IllegalArgumentException e) {
             System.out.println("Error: " + e.getMessage());
@@ -91,7 +81,7 @@ public class LibrarySystem {
 
             System.out.print("ID Member: ");
             String memberId = scanner.nextLine().trim();
-            Member member = findMemberById(memberId);
+            Member member = Member.findById(memberId);
             if (member == null) throw new IllegalArgumentException("Member tidak ditemukan!");
 
             if (book.borrowItem(memberId)) {
@@ -119,33 +109,74 @@ public class LibrarySystem {
     }
 
     private void displayAllBooks() {
-        if (books.isEmpty()) {
-            System.out.println("Belum ada buku.");
-            return;
-        }
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            String sql = "SELECT * FROM books";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
 
-        for (int i = 0; i < books.size(); i++) {
-            System.out.println("Buku " + (i + 1) + ":");
-            books.get(i).displayInfo();
+            int count = 1;
+            while (rs.next()) {
+                System.out.println("Buku " + (count++) + ":");
+                Book book = new Book(
+                        rs.getString("id"),
+                        rs.getString("title"),
+                        rs.getString("author"),
+                        rs.getString("isbn")
+                );
+                book.setAvailable(rs.getBoolean("is_available"));
+                book.displayInfo();
+            }
+
+            if (count == 1) {
+                System.out.println("Belum ada buku.");
+            }
+        } catch (SQLException e) {
+            System.out.println("Gagal mengambil data buku: " + e.getMessage());
         }
     }
 
     private Book findBookById(String id) {
-        for (Book b : books) {
-            if (b.getId().equalsIgnoreCase(id)) return b;
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            String sql = "SELECT * FROM books WHERE id = ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, id);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                Book book = new Book(
+                        rs.getString("id"),
+                        rs.getString("title"),
+                        rs.getString("author"),
+                        rs.getString("isbn")
+                );
+                book.setAvailable(rs.getBoolean("is_available"));
+                return book;
+            }
+        } catch (SQLException e) {
+            System.out.println("Gagal mencari buku: " + e.getMessage());
         }
         return null;
     }
 
-    private Member findMemberById(String id) {
-        for (Member m : members) {
-            if (m.getMemberId().equalsIgnoreCase(id)) return m;
+    private void resetDatabase() {
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            String sql1 = "DELETE FROM books";
+            String sql2 = "DELETE FROM members";
+
+            conn.createStatement().executeUpdate(sql1);
+            conn.createStatement().executeUpdate(sql2);
+
+            System.out.println("Seluruh data berhasil direset (hapus total).");
+        } catch (SQLException e) {
+            System.out.println("Gagal mereset database: " + e.getMessage());
         }
-        return null;
     }
+
 
     private void initializeSampleData() {
-        members.add(new Member("M001", "Rafly", "Rafli@example.com"));
-        members.add(new Member("M002", "Rifqy", "Rifqy@example.com"));
+        Member m1 = new Member("M001", "Rafly", "Rafly@example.com");
+        Member m2 = new Member("M002", "Rifqy", "Rifqy@example.com");
+        m1.saveToDB();
+        m2.saveToDB();
     }
 }

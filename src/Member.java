@@ -1,45 +1,29 @@
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
 public class Member {
     private String memberId;
     private String name;
     private String email;
 
     public Member(String memberId, String name, String email) {
-        setMemberId(memberId);
-        setName(name);
-        setEmail(email);
+        this.memberId = memberId;
+        this.name = name;
+        this.email = email;
     }
 
     public String getMemberId() {
         return memberId;
     }
 
-    public void setMemberId(String memberId) {
-        if (memberId == null || memberId.trim().isEmpty()) {
-            throw new IllegalArgumentException("ID member tidak boleh kosong!");
-        }
-        this.memberId = memberId;
-    }
-
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("Nama tidak boleh kosong!");
-        }
-        this.name = name;
-    }
-
     public String getEmail() {
         return email;
-    }
-
-    public void setEmail(String email) {
-        if (!validateEmail(email)) {
-            throw new IllegalArgumentException("Format email tidak valid!");
-        }
-        this.email = email;
     }
 
     public static boolean validateEmail(String email) {
@@ -52,5 +36,38 @@ public class Member {
         System.out.println("Nama: " + name);
         System.out.println("Email: " + email);
         System.out.println("========================");
+    }
+
+    public static Member findById(String id) {
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            String sql = "SELECT * FROM members WHERE member_id = ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, id);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return new Member(
+                        rs.getString("member_id"),
+                        rs.getString("name"),
+                        rs.getString("email")
+                );
+            }
+        } catch (SQLException e) {
+            System.out.println("Gagal mencari member: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void saveToDB() {
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            String sql = "INSERT INTO members (member_id, name, email) VALUES (?, ?, ?)";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, memberId);
+            stmt.setString(2, name);
+            stmt.setString(3, email);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("Gagal menyimpan member: " + e.getMessage());
+        }
     }
 }
